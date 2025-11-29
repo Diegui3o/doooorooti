@@ -50,6 +50,7 @@ fun HeroesScreen(
                     )
                 )
             )
+            .padding(bottom = 80.dp) // ⬅️ PADDING PARA BOTONES DE NAVEGACIÓN
     ) {
         // Rectángulo 1: Header MINIMALISTA (5%)
         Box(
@@ -69,10 +70,10 @@ fun HeroesScreen(
         ) {
             SearchSection(
                 searchQuery = searchQuery,
-                selectedTeam = selectedTeam, // ⬅️ Pasamos el equipo
+                selectedTeam = selectedTeam,
                 onSearchQueryChange = { viewModel.updateSearchQuery(it) },
                 onClearSearch = { viewModel.clearSearch() },
-                onClearTeam = { viewModel.clearTeam() } // ⬅️ Pasamos la función
+                onClearTeam = { viewModel.clearTeam() }
             )
         }
 
