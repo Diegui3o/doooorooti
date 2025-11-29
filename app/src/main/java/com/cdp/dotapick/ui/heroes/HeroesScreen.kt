@@ -55,12 +55,12 @@ fun HeroesScreen(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(0.05f) // ⬅️ Reducido de 0.2f a 0.05f
+                .weight(0.05f)
         ) {
             HeaderSection()
         }
 
-        // Rectángulo 2: Buscador (10%)
+        // Rectángulo 2: Buscador CON BOTÓN LIMPIAR (10%)
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -69,29 +69,18 @@ fun HeroesScreen(
         ) {
             SearchSection(
                 searchQuery = searchQuery,
+                selectedTeam = selectedTeam, // ⬅️ Pasamos el equipo
                 onSearchQueryChange = { viewModel.updateSearchQuery(it) },
-                onClearSearch = { viewModel.clearSearch() }
+                onClearSearch = { viewModel.clearSearch() },
+                onClearTeam = { viewModel.clearTeam() } // ⬅️ Pasamos la función
             )
         }
 
-        // Rectángulo 3: Información del equipo (10%)
+        // Rectángulo 3: Lista de héroes disponibles (75%)
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(0.1f)
-                .padding(horizontal = 12.dp, vertical = 4.dp)
-        ) {
-            TeamInfoSection(
-                selectedTeam = selectedTeam,
-                onClearTeam = { viewModel.clearTeam() }
-            )
-        }
-
-        // Rectángulo 4: Lista de héroes disponibles (65%) ⬅️ Aumentado
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(0.65f)
+                .weight(0.75f)
         ) {
             HeroesListSection(
                 uiState = uiState,
@@ -100,7 +89,7 @@ fun HeroesScreen(
             )
         }
 
-        // Rectángulo 5: Equipo seleccionado (10%)
+        // Rectángulo 4: Equipo seleccionado (10%)
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -114,7 +103,6 @@ fun HeroesScreen(
         }
     }
 }
-
 @Composable
 fun HeaderSection() {
     Box(
@@ -137,8 +125,10 @@ fun HeaderSection() {
 @Composable
 fun SearchSection(
     searchQuery: String,
+    selectedTeam: List<Hero>, // ⬅️ Agregamos este parámetro
     onSearchQueryChange: (String) -> Unit,
-    onClearSearch: () -> Unit
+    onClearSearch: () -> Unit,
+    onClearTeam: () -> Unit   // ⬅️ Agregamos este parámetro
 ) {
     Card(
         modifier = Modifier.fillMaxSize(),
@@ -154,6 +144,7 @@ fun SearchSection(
                 .padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            // Icono de búsqueda
             Icon(
                 imageVector = Icons.Default.Search,
                 contentDescription = "Buscar",
@@ -163,6 +154,7 @@ fun SearchSection(
 
             Spacer(modifier = Modifier.width(8.dp))
 
+            // Campo de búsqueda
             TextField(
                 value = searchQuery,
                 onValueChange = onSearchQueryChange,
@@ -189,16 +181,36 @@ fun SearchSection(
                 textStyle = MaterialTheme.typography.bodyMedium
             )
 
-            if (searchQuery.isNotBlank()) {
-                IconButton(
-                    onClick = onClearSearch,
-                    modifier = Modifier.size(32.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = "Limpiar búsqueda",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+            // Botones a la derecha
+            Row(
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Botón para limpiar búsqueda
+                if (searchQuery.isNotBlank()) {
+                    IconButton(
+                        onClick = onClearSearch,
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Limpiar búsqueda",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                // Botón para limpiar equipo
+                if (selectedTeam.isNotEmpty()) {
+                    TextButton(
+                        onClick = onClearTeam,
+                        modifier = Modifier.height(30.dp)
+                    ) {
+                        Text(
+                            text = "Limpiar",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = DotaRed
+                        )
+                    }
                 }
             }
         }
