@@ -13,8 +13,8 @@ class HeroesViewModel : ViewModel() {
     private val _uiState = MutableStateFlow<HeroesUiState>(HeroesUiState.Loading)
     val uiState: StateFlow<HeroesUiState> = _uiState
 
-    private val _selectedHero = MutableStateFlow<Hero?>(null)
-    val selectedHero: StateFlow<Hero?> = _selectedHero
+    private val _selectedTeam = MutableStateFlow<List<Hero>>(emptyList())
+    val selectedTeam: StateFlow<List<Hero>> = _selectedTeam
 
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery
@@ -29,7 +29,6 @@ class HeroesViewModel : ViewModel() {
         viewModelScope.launch {
             _uiState.value = HeroesUiState.Loading
             try {
-                // Datos mock temporalmente
                 allHeroes = createMockHeroes().sortedBy { it.localizedName }
                 filterHeroes(_searchQuery.value)
             } catch (e: Exception) {
@@ -44,14 +43,17 @@ class HeroesViewModel : ViewModel() {
     }
 
     private fun filterHeroes(query: String) {
+        val selectedIds = _selectedTeam.value.map { it.id }
         val filteredHeroes = if (query.isBlank()) {
-            allHeroes
+            allHeroes.filter { it.id !in selectedIds }
         } else {
             allHeroes.filter { hero ->
-                hero.localizedName.contains(query, ignoreCase = true) ||
-                        hero.roles.any { it.contains(query, ignoreCase = true) } ||
-                        hero.getAttributeName().contains(query, ignoreCase = true) ||
-                        hero.getPositionName().contains(query, ignoreCase = true)
+                hero.id !in selectedIds && (
+                        hero.localizedName.contains(query, ignoreCase = true) ||
+                                hero.roles.any { it.contains(query, ignoreCase = true) } ||
+                                hero.getAttributeName().contains(query, ignoreCase = true) ||
+                                hero.getPositionName().contains(query, ignoreCase = true)
+                        )
             }
         }
 
@@ -70,11 +72,20 @@ class HeroesViewModel : ViewModel() {
     }
 
     fun selectHero(hero: Hero) {
-        _selectedHero.value = hero
+        if (_selectedTeam.value.size < 5) {
+            _selectedTeam.value = _selectedTeam.value + hero
+            filterHeroes(_searchQuery.value) // Actualizar lista para remover el héroe seleccionado
+        }
     }
 
-    fun clearSelection() {
-        _selectedHero.value = null
+    fun removeHeroFromTeam(hero: Hero) {
+        _selectedTeam.value = _selectedTeam.value.filter { it.id != hero.id }
+        filterHeroes(_searchQuery.value) // Actualizar lista para agregar el héroe de vuelta
+    }
+
+    fun clearTeam() {
+        _selectedTeam.value = emptyList()
+        filterHeroes(_searchQuery.value)
     }
 
     private fun createMockHeroes(): List<Hero> {
@@ -529,7 +540,6 @@ class HeroesViewModel : ViewModel() {
         )
     }
 }
-
 sealed class HeroesUiState {
     object Loading : HeroesUiState()
     data class Success(val heroes: List<Hero>) : HeroesUiState()
