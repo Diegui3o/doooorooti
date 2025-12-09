@@ -1,7 +1,7 @@
 package com.cdp.dotapick.data.model
 
 data class Hero(
-    val id: Int,
+    val id: Int = 0,
     val name: String,
     val localizedName: String,
     val primaryAttr: String,
@@ -10,7 +10,7 @@ data class Hero(
     val img: String,
     val icon: String,
     val position: Int
-) {
+){
     fun getPositionName(): String {
         return when (position) {
             1 -> "Carry"

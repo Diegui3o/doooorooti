@@ -50,9 +50,9 @@ fun HeroesScreen(
                     )
                 )
             )
-            .padding(bottom = 80.dp) // ⬅️ PADDING PARA BOTONES DE NAVEGACIÓN
+            .padding(bottom = 80.dp)
     ) {
-        // Rectángulo 1: Header MINIMALISTA (5%)
+        // Header (5%)
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -61,7 +61,7 @@ fun HeroesScreen(
             HeaderSection()
         }
 
-        // Rectángulo 2: Buscador CON BOTÓN LIMPIAR (10%)
+        // Buscador (10%)
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -77,7 +77,7 @@ fun HeroesScreen(
             )
         }
 
-        // Rectángulo 3: Lista de héroes disponibles (75%)
+        // Lista de héroes (75%)
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -86,11 +86,11 @@ fun HeroesScreen(
             HeroesListSection(
                 uiState = uiState,
                 selectedTeam = selectedTeam,
-                onHeroClick = { viewModel.selectHero(it) }
+                onHeroClick = { viewModel.selectHero(it.hero) }
             )
         }
 
-        // Rectángulo 4: Equipo seleccionado (10%)
+        // Equipo seleccionado (10%)
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -104,6 +104,43 @@ fun HeroesScreen(
         }
     }
 }
+@Composable
+fun HeroRow(
+    item: HeroesViewModel.HeroWithScore
+) {
+    val hero = item.hero
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Imagen del héroe
+        AsyncImage(
+            model = hero.img,
+            contentDescription = hero.localizedName,
+            modifier = Modifier
+                .size(64.dp)
+                .clip(RoundedCornerShape(8.dp))
+        )
+
+        Spacer(modifier = Modifier.width(8.dp))
+
+        Column {
+            // 👇 ID al ladito de la imagen
+            Text(
+                text = "ID: ${hero.id}",
+                style = MaterialTheme.typography.bodySmall
+            )
+            Text(
+                text = hero.localizedName,
+                style = MaterialTheme.typography.bodyLarge
+            )
+        }
+    }
+}
+
 @Composable
 fun HeaderSection() {
     Box(
@@ -262,27 +299,27 @@ fun TeamInfoSection(
 
 @Composable
 fun HeroesListSection(
-    uiState: HeroesUiState,
+    uiState: HeroesViewModel.HeroesUiState, // ⬅️ Tipo actualizado
     selectedTeam: List<Hero>,
-    onHeroClick: (Hero) -> Unit
+    onHeroClick: (HeroesViewModel.HeroWithScore) -> Unit // ⬅️ Tipo actualizado
 ) {
     when (uiState) {
-        is HeroesUiState.Loading -> {
+        is HeroesViewModel.HeroesUiState.Loading -> {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = DotaRed)
             }
         }
-        is HeroesUiState.Error -> {
+        is HeroesViewModel.HeroesUiState.Error -> {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text(
-                    text = (uiState as HeroesUiState.Error).message,
+                    text = (uiState as HeroesViewModel.HeroesUiState.Error).message,
                     color = MaterialTheme.colorScheme.error,
                     textAlign = TextAlign.Center
                 )
             }
         }
-        is HeroesUiState.Success -> {
-            val heroes = (uiState as HeroesUiState.Success).heroes
+        is HeroesViewModel.HeroesUiState.Success -> {
+            val heroes = (uiState as HeroesViewModel.HeroesUiState.Success).heroes
 
             if (heroes.isEmpty() && selectedTeam.size == 5) {
                 Box(
@@ -322,10 +359,10 @@ fun HeroesListSection(
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    items(heroes) { hero ->
+                    items(heroes) { heroWithScore ->
                         HeroItem(
-                            hero = hero,
-                            onHeroClick = { onHeroClick(hero) }
+                            heroWithScore = heroWithScore, // ⬅️ Nuevo parámetro
+                            onHeroClick = { onHeroClick(heroWithScore) }
                         )
                     }
                 }
@@ -433,9 +470,12 @@ fun SelectedTeamHeroItem(
 
 @Composable
 fun HeroItem(
-    hero: Hero,
+    heroWithScore: HeroesViewModel.HeroWithScore,
     onHeroClick: () -> Unit
 ) {
+    val hero = heroWithScore.hero
+    val score = heroWithScore.score
+
     val positionColor = when (hero.position) {
         1 -> DotaRed.copy(alpha = 0.8f)
         2 -> DotaBlue.copy(alpha = 0.8f)
@@ -454,6 +494,18 @@ fun HeroItem(
         else -> Color.Gray.copy(alpha = 0.05f)
     }
 
+    val scoreColor = when {
+        score > 0 -> DotaGreen
+        score < 0 -> DotaRed
+        else -> Color(0xFFFFC107)
+    }
+
+    val scoreText = when {
+        score > 0 -> "+${score.toInt()}"
+        score < 0 -> "${score.toInt()}"
+        else -> "0"
+    }
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -469,6 +521,7 @@ fun HeroItem(
                 .padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            // 👇 Imagen + ID
             Box(
                 modifier = Modifier
                     .size(45.dp)
@@ -481,6 +534,21 @@ fun HeroItem(
                     modifier = Modifier
                         .size(45.dp)
                         .clip(RoundedCornerShape(8.dp))
+                )
+
+                // ID sobre la imagen
+                Text(
+                    text = "${hero.id}",
+                    color = Color.White,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .background(
+                            Color.Black.copy(alpha = 0.7f),
+                            RoundedCornerShape(bottomEnd = 6.dp)
+                        )
+                        .padding(horizontal = 4.dp, vertical = 2.dp)
                 )
             }
 
@@ -502,6 +570,20 @@ fun HeroItem(
                     style = MaterialTheme.typography.labelSmall,
                     color = positionColor,
                     fontWeight = FontWeight.Bold
+                )
+            }
+
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    text = scoreText,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = scoreColor,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "pts",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }

@@ -1,7 +1,7 @@
 package com.cdp.dotapick.data.model
 
 data class HeroItem(
-    val heroId: Int,
+    val heroName: String,
     val itemId: Int,
     val itemName: String,
     val itemImage: String,

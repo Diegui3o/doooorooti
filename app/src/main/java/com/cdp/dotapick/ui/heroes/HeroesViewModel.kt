@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import com.cdp.dotapick.domain.model.SimpleScoringSystem
 
 class HeroesViewModel : ViewModel() {
 
@@ -29,8 +30,9 @@ class HeroesViewModel : ViewModel() {
         viewModelScope.launch {
             _uiState.value = HeroesUiState.Loading
             try {
-                allHeroes = createMockHeroes().sortedBy { it.localizedName }
-                filterHeroes(_searchQuery.value)
+                // createMockHeroes ya devuelve ordenado, si quieres puedes quitar el sortedBy de aquí
+                allHeroes = createMockHeroes()
+                updateHeroesList()
             } catch (e: Exception) {
                 _uiState.value = HeroesUiState.Error(e.message ?: "Error desconocido")
             }
@@ -39,60 +41,81 @@ class HeroesViewModel : ViewModel() {
 
     fun updateSearchQuery(query: String) {
         _searchQuery.value = query
-        filterHeroes(query)
-    }
-
-    private fun filterHeroes(query: String) {
-        val selectedIds = _selectedTeam.value.map { it.id }
-        val filteredHeroes = if (query.isBlank()) {
-            allHeroes.filter { it.id !in selectedIds }
-        } else {
-            allHeroes.filter { hero ->
-                hero.id !in selectedIds && (
-                        hero.localizedName.contains(query, ignoreCase = true) ||
-                                hero.roles.any { it.contains(query, ignoreCase = true) } ||
-                                hero.getAttributeName().contains(query, ignoreCase = true) ||
-                                hero.getPositionName().contains(query, ignoreCase = true)
-                        )
-            }
-        }
-
-        _uiState.update { currentState ->
-            when (currentState) {
-                is HeroesUiState.Success -> HeroesUiState.Success(filteredHeroes)
-                is HeroesUiState.Loading -> HeroesUiState.Success(filteredHeroes)
-                is HeroesUiState.Error -> currentState
-            }
-        }
-    }
-
-    fun clearSearch() {
-        _searchQuery.value = ""
-        filterHeroes("")
+        updateHeroesList()
     }
 
     fun selectHero(hero: Hero) {
         if (_selectedTeam.value.size < 5) {
             _selectedTeam.value = _selectedTeam.value + hero
-            filterHeroes(_searchQuery.value) // Actualizar lista para remover el héroe seleccionado
+            updateHeroesList()
         }
+    }
+
+    fun clearSearch() {
+        _searchQuery.value = ""
     }
 
     fun removeHeroFromTeam(hero: Hero) {
         _selectedTeam.value = _selectedTeam.value.filter { it.id != hero.id }
-        filterHeroes(_searchQuery.value) // Actualizar lista para agregar el héroe de vuelta
+        updateHeroesList()
     }
 
     fun clearTeam() {
         _selectedTeam.value = emptyList()
-        filterHeroes(_searchQuery.value)
+        updateHeroesList()
     }
 
+    private fun updateHeroesList() {
+        val selectedIds = _selectedTeam.value.map { it.id }
+        val availableHeroes = if (_searchQuery.value.isBlank()) {
+            allHeroes.filter { it.id !in selectedIds }
+        } else {
+            allHeroes.filter { hero ->
+                hero.id !in selectedIds && (
+                        hero.localizedName.contains(_searchQuery.value, ignoreCase = true) ||
+                                hero.roles.any { it.contains(_searchQuery.value, ignoreCase = true) } ||
+                                hero.getAttributeName().contains(_searchQuery.value, ignoreCase = true) ||
+                                hero.getPositionName().contains(_searchQuery.value, ignoreCase = true)
+                        )
+            }
+        }
+
+        val heroesWithScores = if (_selectedTeam.value.isNotEmpty()) {
+            availableHeroes.map { hero ->
+                val score = SimpleScoringSystem.calculateSimpleScore(_selectedTeam.value, hero)
+                HeroWithScore(hero, score)
+            }.sortedWith(
+                compareByDescending<HeroWithScore> { it.score }
+                    .thenBy { it.hero.localizedName }
+            )
+        } else {
+            availableHeroes
+                .sortedBy { it.localizedName }
+                .map { hero -> HeroWithScore(hero, 0.0) }
+        }
+
+        _uiState.update { currentState ->
+            when (currentState) {
+                is HeroesUiState.Success -> HeroesUiState.Success(heroesWithScores)
+                is HeroesUiState.Loading -> HeroesUiState.Success(heroesWithScores)
+                is HeroesUiState.Error -> currentState
+            }
+        }
+    }
+
+    // Data class para llevar hero + score
+    data class HeroWithScore(val hero: Hero, val score: Double)
+
+    sealed class HeroesUiState {
+        object Loading : HeroesUiState()
+        data class Success(val heroes: List<HeroWithScore>) : HeroesUiState()
+        data class Error(val message: String) : HeroesUiState()
+    }
+
+    // 👇 AQUÍ va la función correctamente cerrada
     private fun createMockHeroes(): List<Hero> {
-        // Tu lista actual de héroes aquí...
-        return listOf(
-                    Hero(
-                        id = 4,
+        val heroesBase = listOf(
+            Hero(
                         name = "npc_dota_hero_antimage",
                         localizedName = "Anti-Mage",
                         primaryAttr = "agi",
@@ -104,7 +127,6 @@ class HeroesViewModel : ViewModel() {
                     ),
 
                     Hero(
-                        id = 42,
                         name = "npc_dota_hero_juggernaut",
                         localizedName = "Juggernaut",
                         primaryAttr = "agi",
@@ -115,7 +137,6 @@ class HeroesViewModel : ViewModel() {
                         position = 1
                     ),
             Hero(
-                id = 58,
                 name = "npc_dota_hero_marci",
                 localizedName = "Marci",
                 primaryAttr = "agi",
@@ -126,7 +147,6 @@ class HeroesViewModel : ViewModel() {
                 position = 1
             ),
             Hero(
-                id = 53,
                 name = "npc_dota_hero_luna",
                 localizedName = "Luna",
                 primaryAttr = "agi",
@@ -137,7 +157,6 @@ class HeroesViewModel : ViewModel() {
                 position = 1
             ),
             Hero(
-                id = 60,
                 name = "npc_dota_hero_medusa",
                 localizedName = "Medusa",
                 primaryAttr = "agi",
@@ -148,7 +167,6 @@ class HeroesViewModel : ViewModel() {
                 position = 1
             ),
             Hero(
-                id = 44,
                 name = "npc_dota_hero_kez",
                 localizedName = "Kez",
                 primaryAttr = "agi",
@@ -159,7 +177,6 @@ class HeroesViewModel : ViewModel() {
                 position = 1
             ),
                     Hero(
-                        id = 10,
                         name = "npc_dota_hero_bloodseeker",
                         localizedName = "Bloodseeker",
                         primaryAttr = "agi",
@@ -170,7 +187,6 @@ class HeroesViewModel : ViewModel() {
                         position = 1
                     ),
             Hero(
-                id = 95,
                 name = "npc_dota_hero_slark",
                 localizedName = "Slark",
                 primaryAttr = "agi",
@@ -181,7 +197,6 @@ class HeroesViewModel : ViewModel() {
                 position = 1
             ),
             Hero(
-                id = 63,
                 name = "npc_dota_hero_monkey_king",
                 localizedName = "Monkey King",
                 primaryAttr = "agi",
@@ -192,7 +207,6 @@ class HeroesViewModel : ViewModel() {
                 position = 1
             ),
             Hero(
-                id = 97,
                 name = "npc_dota_hero_sniper",
                 localizedName = "Sniper",
                 primaryAttr = "agi",
@@ -203,7 +217,6 @@ class HeroesViewModel : ViewModel() {
                 position = 1
             ),
             Hero(
-                id = 110,
                 name = "npc_dota_hero_troll_warlord",
                 localizedName = "Troll Warlord",
                 primaryAttr = "agi",
@@ -214,7 +227,6 @@ class HeroesViewModel : ViewModel() {
                 position = 1
             ),
             Hero(
-                id = 98,
                 name = "npc_dota_hero_spectre",
                 localizedName = "Spectre",
                 primaryAttr = "agi",
@@ -225,7 +237,6 @@ class HeroesViewModel : ViewModel() {
                 position = 1
             ),
             Hero(
-                id = 101,
                 name = "npc_dota_hero_sven",
                 localizedName = "Sven",
                 primaryAttr = "agi",
@@ -236,7 +247,6 @@ class HeroesViewModel : ViewModel() {
                 position = 1
             ),
             Hero(
-                id = 114,
                 name = "npc_dota_hero_ursa",
                 localizedName = "Ursa",
                 primaryAttr = "agi",
@@ -247,7 +257,6 @@ class HeroesViewModel : ViewModel() {
                 position = 1
             ),
             Hero(
-                id = 125,
                 name = "npc_dota_hero_skeleton_king",
                 localizedName = "Wraith King",
                 primaryAttr = "agi",
@@ -258,7 +267,6 @@ class HeroesViewModel : ViewModel() {
                 position = 1
             ),
             Hero(
-                id = 64,
                 name = "npc_dota_hero_morphling",
                 localizedName = "Morphling",
                 primaryAttr = "agi",
@@ -269,7 +277,6 @@ class HeroesViewModel : ViewModel() {
                 position = 1
             ),
             Hero(
-                id = 65,
                 name = "npc_dota_hero_muerta",
                 localizedName = "Muerta",
                 primaryAttr = "agi",
@@ -280,7 +287,6 @@ class HeroesViewModel : ViewModel() {
                 position = 1
             ),
             Hero(
-                id = 66,
                 name = "npc_dota_hero_naga_siren",
                 localizedName = "Naga Siren",
                 primaryAttr = "agi",
@@ -291,7 +297,6 @@ class HeroesViewModel : ViewModel() {
                 position = 1
             ),
                     Hero(
-                        id = 29,
                         name = "npc_dota_hero_drow_ranger",
                         localizedName = "Drow Ranger",
                         primaryAttr = "agi",
@@ -302,7 +307,6 @@ class HeroesViewModel : ViewModel() {
                         position = 1
                     ),
             Hero(
-                id = 121,
                 name = "npc_dota_hero_weaver",
                 localizedName = "Weaver",
                 primaryAttr = "agi",
@@ -313,7 +317,6 @@ class HeroesViewModel : ViewModel() {
                 position = 1
             ),
                     Hero(
-                        id = 16,
                         name = "npc_dota_hero_chaos_knight",
                         localizedName = "Chaos Knight",
                         primaryAttr = "agi",
@@ -324,7 +327,6 @@ class HeroesViewModel : ViewModel() {
                         position = 1
                     ),
                     Hero(
-                        id = 18,
                         name = "npc_dota_hero_clinkz",
                         localizedName = "Clinkz",
                         primaryAttr = "agi",
@@ -335,7 +337,6 @@ class HeroesViewModel : ViewModel() {
                         position = 1
                     ),
                     Hero(
-                        id = 35,
                         name = "npc_dota_hero_faceless_void",
                         localizedName = "Faceless Void",
                         primaryAttr = "agi",
@@ -346,7 +347,6 @@ class HeroesViewModel : ViewModel() {
                         position = 1
                     ),
                     Hero(
-                        id = 36,
                         name = "npc_dota_hero_gyrocopter",
                         localizedName = "Gyrocopter",
                         primaryAttr = "agi",
@@ -357,7 +357,6 @@ class HeroesViewModel : ViewModel() {
                         position = 1
                     ),
             Hero(
-                id = 75,
                 name = "npc_dota_hero_pangolier",
                 localizedName = "Pangolier",
                 primaryAttr = "agi",
@@ -368,7 +367,6 @@ class HeroesViewModel : ViewModel() {
                 position = 1
             ),
             Hero(
-                id = 76,
                 name = "npc_dota_hero_phantom_assassin",
                 localizedName = "Phantom Assassin",
                 primaryAttr = "agi",
@@ -379,7 +377,6 @@ class HeroesViewModel : ViewModel() {
                 position = 1
             ),
             Hero(
-                id = 117,
                 name = "npc_dota_hero_viper",
                 localizedName = "Viper",
                 primaryAttr = "agi",
@@ -390,7 +387,6 @@ class HeroesViewModel : ViewModel() {
                 position = 1
             ),
             Hero(
-                id = 85,
                 name = "npc_dota_hero_riki",
                 localizedName = "Riki",
                 primaryAttr = "agi",
@@ -401,7 +397,6 @@ class HeroesViewModel : ViewModel() {
                 position = 1
             ),
             Hero(
-                id = 104,
                 name = "npc_dota_hero_terrorblade",
                 localizedName = "Terrorblade",
                 primaryAttr = "agi",
@@ -412,7 +407,6 @@ class HeroesViewModel : ViewModel() {
                 position = 1
             ),
             Hero(
-                id = 77,
                 name = "npc_dota_hero_phantom_lancer",
                 localizedName = "Phantom Lancer",
                 primaryAttr = "agi",
@@ -424,7 +418,6 @@ class HeroesViewModel : ViewModel() {
             ),
                     // POSICIÓN 2 - MID
                     Hero(
-                        id = 32,
                         name = "npc_dota_hero_ember_spirit",
                         localizedName = "Ember Spirit",
                         primaryAttr = "int",
@@ -435,7 +428,6 @@ class HeroesViewModel : ViewModel() {
                         position = 2
                     ),
             Hero(
-                id = 100,
                 name = "npc_dota_hero_storm_spirit",
                 localizedName = "Storm Spirit",
                 primaryAttr = "int",
@@ -446,7 +438,6 @@ class HeroesViewModel : ViewModel() {
                 position = 2
             ),
             Hero(
-                id = 118,
                 name = "npc_dota_hero_visage",
                 localizedName = "Visage",
                 primaryAttr = "int",
@@ -457,7 +448,6 @@ class HeroesViewModel : ViewModel() {
                 position = 2
             ),
             Hero(
-                id = 122,
                 name = "npc_dota_hero_windrunner",
                 localizedName = "Windranger",
                 primaryAttr = "int",
@@ -468,7 +458,6 @@ class HeroesViewModel : ViewModel() {
                 position = 2
             ),
             Hero(
-                id = 126,
                 name = "npc_dota_hero_zuus",
                 localizedName = "Zeus",
                 primaryAttr = "int",
@@ -479,7 +468,6 @@ class HeroesViewModel : ViewModel() {
                 position = 2
             ),
             Hero(
-                id = 119,
                 name = "npc_dota_hero_void_spirit",
                 localizedName = "Void Spirit",
                 primaryAttr = "int",
@@ -490,7 +478,6 @@ class HeroesViewModel : ViewModel() {
                 position = 2
             ),
             Hero(
-                id = 50,
                 name = "npc_dota_hero_lina",
                 localizedName = "Lina",
                 primaryAttr = "int",
@@ -501,7 +488,6 @@ class HeroesViewModel : ViewModel() {
                 position = 2
             ),
                     Hero(
-                        id = 5,
                         name = "npc_dota_hero_arc_warden",
                         localizedName = "Arc Warden",
                         primaryAttr = "int",
@@ -512,7 +498,6 @@ class HeroesViewModel : ViewModel() {
                         position = 2
                     ),
                     Hero(
-                        id = 80,
                         name = "npc_dota_hero_puck",
                         localizedName = "Puck",
                         primaryAttr = "int",
@@ -523,7 +508,6 @@ class HeroesViewModel : ViewModel() {
                         position = 2
                     ),
             Hero(
-                id = 90,
                 name = "npc_dota_hero_nevermore",
                 localizedName = "Shadow Fiend",
                 primaryAttr = "int",
@@ -534,7 +518,6 @@ class HeroesViewModel : ViewModel() {
                 position = 2
             ),
                     Hero(
-                        id = 2,
                         name = "npc_dota_hero_alchemist",
                         localizedName = "Alchemist",
                         primaryAttr = "int",
@@ -545,7 +528,6 @@ class HeroesViewModel : ViewModel() {
                         position = 2
                     ),
             Hero(
-                id = 61,
                 name = "npc_dota_hero_meepo",
                 localizedName = "Meepo",
                 primaryAttr = "int",
@@ -556,7 +538,6 @@ class HeroesViewModel : ViewModel() {
                 position = 2
             ),
             Hero(
-                id = 74,
                 name = "npc_dota_hero_obsidian_destroyer",
                 localizedName = "Outworld Destroyer",
                 primaryAttr = "int",
@@ -567,7 +548,6 @@ class HeroesViewModel : ViewModel() {
                 position = 2
             ),
                     Hero(
-                        id = 14,
                         name = "npc_dota_hero_broodmother",
                         localizedName = "Broodmother",
                         primaryAttr = "int",
@@ -578,7 +558,6 @@ class HeroesViewModel : ViewModel() {
                         position = 2
                     ),
             Hero(
-                id = 52,
                 name = "npc_dota_hero_lone_druid",
                 localizedName = "Lone Druid",
                 primaryAttr = "int",
@@ -589,7 +568,6 @@ class HeroesViewModel : ViewModel() {
                 position = 2
             ),
                     Hero(
-                        id = 25,
                         name = "npc_dota_hero_death_prophet",
                         localizedName = "Death Prophet",
                         primaryAttr = "int",
@@ -600,7 +578,6 @@ class HeroesViewModel : ViewModel() {
                         position = 2
                     ),
             Hero(
-                id = 39,
                 name = "npc_dota_hero_invoker",
                 localizedName = "Invoker",
                 primaryAttr = "int",
@@ -611,7 +588,6 @@ class HeroesViewModel : ViewModel() {
                 position = 2
             ),
             Hero(
-                id = 107,
                 name = "npc_dota_hero_tinker",
                 localizedName = "Tinker",
                 primaryAttr = "int",
@@ -622,7 +598,6 @@ class HeroesViewModel : ViewModel() {
                 position = 2
             ),
             Hero(
-                id = 103,
                 name = "npc_dota_hero_templar_assassin",
                 localizedName = "Templar Assassin",
                 primaryAttr = "int",
@@ -633,7 +608,6 @@ class HeroesViewModel : ViewModel() {
                 position = 2
             ),
             Hero(
-                id = 82,
                 name = "npc_dota_hero_pugna",
                 localizedName = "Pugna",
                 primaryAttr = "int",
@@ -644,7 +618,6 @@ class HeroesViewModel : ViewModel() {
                 position = 2
             ),
             Hero(
-                id = 83,
                 name = "npc_dota_hero_queenofpain",
                 localizedName = "Queen of Pain",
                 primaryAttr = "int",
@@ -657,7 +630,6 @@ class HeroesViewModel : ViewModel() {
 
                     // POSICIÓN 3 - OFFLANE
                     Hero(
-                        id = 1,
                         name = "npc_dota_hero_abaddon",
                         localizedName = "Abaddon",
                         primaryAttr = "str",
@@ -668,7 +640,6 @@ class HeroesViewModel : ViewModel() {
                         position = 3
                     ),
             Hero(
-                id = 68,
                 name = "npc_dota_hero_necrolyte",
                 localizedName = "Necrophos",
                 primaryAttr = "str",
@@ -679,7 +650,6 @@ class HeroesViewModel : ViewModel() {
                 position = 3
             ),
             Hero(
-                id = 106,
                 name = "npc_dota_hero_shredder",
                 localizedName = "Timbersaw",
                 primaryAttr = "str",
@@ -690,7 +660,6 @@ class HeroesViewModel : ViewModel() {
                 position = 3
             ),
             Hero(
-                id = 84,
                 name = "npc_dota_hero_razor",
                 localizedName = "Razor",
                 primaryAttr = "str",
@@ -701,7 +670,6 @@ class HeroesViewModel : ViewModel() {
                 position = 3
             ),
             Hero(
-                id = 69,
                 name = "npc_dota_hero_night_stalker",
                 localizedName = "Night Stalker",
                 primaryAttr = "str",
@@ -712,7 +680,6 @@ class HeroesViewModel : ViewModel() {
                 position = 3
             ),
                     Hero(
-                        id = 19,
                         name = "npc_dota_hero_clockwerk",
                         localizedName = "Clockwerk",
                         primaryAttr = "str",
@@ -723,7 +690,6 @@ class HeroesViewModel : ViewModel() {
                         position = 3
                     ),
                     Hero(
-                        id = 23,
                         name = "npc_dota_hero_dawnbreaker",
                         localizedName = "Dawnbreaker",
                         primaryAttr = "str",
@@ -734,7 +700,6 @@ class HeroesViewModel : ViewModel() {
                         position = 3
                     ),
                     Hero(
-                        id = 15,
                         name = "npc_dota_hero_centaur_warrunner",
                         localizedName = "Centaur Warrunner",
                         primaryAttr = "str",
@@ -745,7 +710,6 @@ class HeroesViewModel : ViewModel() {
                         position = 3
                     ),
             Hero(
-                id = 38,
                 name = "npc_dota_hero_huskar",
                 localizedName = "Huskar",
                 primaryAttr = "str",
@@ -756,7 +720,6 @@ class HeroesViewModel : ViewModel() {
                 position = 3
             ),
                     Hero(
-                        id = 6,
                         name = "npc_dota_hero_axe",
                         localizedName = "Axe",
                         primaryAttr = "str",
@@ -767,7 +730,6 @@ class HeroesViewModel : ViewModel() {
                         position = 3
                     ),
                     Hero(
-                        id = 105,
                         name = "npc_dota_hero_tidehunter",
                         localizedName = "Tidehunter",
                         primaryAttr = "str",
@@ -778,7 +740,6 @@ class HeroesViewModel : ViewModel() {
                         position = 3
                     ),
             Hero(
-                id = 45,
                 name = "npc_dota_hero_kunkka",
                 localizedName = "Kunkka",
                 primaryAttr = "str",
@@ -789,7 +750,6 @@ class HeroesViewModel : ViewModel() {
                 position = 3
             ),
             Hero(
-                id = 54,
                 name = "npc_dota_hero_lycan",
                 localizedName = "Lycan",
                 primaryAttr = "str",
@@ -800,7 +760,6 @@ class HeroesViewModel : ViewModel() {
                 position = 3
             ),
             Hero(
-                id = 57,
                 name = "npc_dota_hero_magnataur",
                 localizedName = "Magnus",
                 primaryAttr = "str",
@@ -811,7 +770,6 @@ class HeroesViewModel : ViewModel() {
                 position = 3
             ),
             Hero(
-                id = 46,
                 name = "npc_dota_hero_legion_commander",
                 localizedName = "Legion Commander",
                 primaryAttr = "str",
@@ -822,7 +780,6 @@ class HeroesViewModel : ViewModel() {
                 position = 3
             ),
             Hero(
-                id = 79,
                 name = "npc_dota_hero_primal_beast",
                 localizedName = "Primal Beast",
                 primaryAttr = "str",
@@ -833,7 +790,6 @@ class HeroesViewModel : ViewModel() {
                 position = 3
             ),
                     Hero(
-                        id = 0,
                         name = "npc_dota_hero_batrider",
                         localizedName = "Batrider",
                         primaryAttr = "str",
@@ -844,7 +800,6 @@ class HeroesViewModel : ViewModel() {
                         position = 3
                     ),
                     Hero(
-                        id = 9,
                         name = "npc_dota_hero_beastmaster",
                         localizedName = "Beastmaster",
                         primaryAttr = "str",
@@ -855,7 +810,6 @@ class HeroesViewModel : ViewModel() {
                         position = 3
                     ),
                     Hero(
-                        id = 12,
                         name = "npc_dota_hero_brewmaster",
                         localizedName = "Brewmaster",
                         primaryAttr = "str",
@@ -866,7 +820,6 @@ class HeroesViewModel : ViewModel() {
                         position = 3
                     ),
             Hero(
-                id = 49,
                 name = "npc_dota_hero_life_stealer",
                 localizedName = "Lifestealer",
                 primaryAttr = "str",
@@ -877,7 +830,6 @@ class HeroesViewModel : ViewModel() {
                 position = 3
             ),
                     Hero(
-                        id = 13,
                         name = "npc_dota_hero_bristleback",
                         localizedName = "Bristleback",
                         primaryAttr = "str",
@@ -888,7 +840,6 @@ class HeroesViewModel : ViewModel() {
                         position = 3
                     ),
             Hero(
-                id = 59,
                 name = "npc_dota_hero_mars",
                 localizedName = "Mars",
                 primaryAttr = "str",
@@ -899,7 +850,6 @@ class HeroesViewModel : ViewModel() {
                 position = 3
             ),
                     Hero(
-                        id = 27,
                         name = "npc_dota_hero_doom",
                         localizedName = "Doom",
                         primaryAttr = "str",
@@ -910,7 +860,6 @@ class HeroesViewModel : ViewModel() {
                         position = 3
                     ),
                     Hero(
-                        id = 28,
                         name = "npc_dota_hero_dragon_knight",
                         localizedName = "Dragon Knight",
                         primaryAttr = "str",
@@ -921,7 +870,6 @@ class HeroesViewModel : ViewModel() {
                         position = 3
                     ),
             Hero(
-                id = 94,
                 name = "npc_dota_hero_slardar",
                 localizedName = "Slardar",
                 primaryAttr = "str",
@@ -932,7 +880,6 @@ class HeroesViewModel : ViewModel() {
                 position = 3
             ),
             Hero(
-                id = 112,
                 name = "npc_dota_hero_abyssal_underlord",
                 localizedName = "Underlord",
                 primaryAttr = "str",
@@ -943,7 +890,6 @@ class HeroesViewModel : ViewModel() {
                 position = 3
             ),
             Hero(
-                id = 113,
                 name = "npc_dota_hero_undying",
                 localizedName = "Undying",
                 primaryAttr = "str",
@@ -954,7 +900,6 @@ class HeroesViewModel : ViewModel() {
                 position = 3
             ),
             Hero(
-                id = 88,
                 name = "npc_dota_hero_sand_king",
                 localizedName = "Sand King",
                 primaryAttr = "str",
@@ -965,7 +910,6 @@ class HeroesViewModel : ViewModel() {
                 position = 3
             ),
             Hero(
-                id = 108,
                 name = "npc_dota_hero_tiny",
                 localizedName = "Tiny",
                 primaryAttr = "str",
@@ -976,7 +920,6 @@ class HeroesViewModel : ViewModel() {
                 position = 3
             ),
                     Hero(
-                        id = 31,
                         name = "npc_dota_hero_earthshaker",
                         localizedName = "Earthshaker",
                         primaryAttr = "str",
@@ -988,7 +931,6 @@ class HeroesViewModel : ViewModel() {
                     ),
                     // POSICIÓN 4 - SOFT SUPPORT
                     Hero(
-                        id = 87,
                         name = "npc_dota_hero_rubick",
                         localizedName = "Rubick",
                         primaryAttr = "int",
@@ -999,7 +941,6 @@ class HeroesViewModel : ViewModel() {
                         position = 4
                     ),
             Hero(
-                id = 96,
                 name = "npc_dota_hero_snapfire",
                 localizedName = "Snapfire",
                 primaryAttr = "int",
@@ -1010,7 +951,6 @@ class HeroesViewModel : ViewModel() {
                 position = 4
             ),
             Hero(
-                id = 47,
                 name = "npc_dota_hero_leshrac",
                 localizedName = "Leshrac",
                 primaryAttr = "int",
@@ -1021,7 +961,6 @@ class HeroesViewModel : ViewModel() {
                 position = 4
             ),
             Hero(
-                id = 81,
                 name = "npc_dota_hero_pudge",
                 localizedName = "Pudge",
                 primaryAttr = "int",
@@ -1032,7 +971,6 @@ class HeroesViewModel : ViewModel() {
                 position = 4
             ),
             Hero(
-                id = 111,
                 name = "npc_dota_hero_tusk",
                 localizedName = "Tusk",
                 primaryAttr = "int",
@@ -1043,7 +981,6 @@ class HeroesViewModel : ViewModel() {
                 position = 4
             ),
             Hero(
-                id = 89,
                 name = "npc_dota_hero_shadow_demon",
                 localizedName = "Shadow Demon",
                 primaryAttr = "int",
@@ -1054,7 +991,6 @@ class HeroesViewModel : ViewModel() {
                 position = 4
             ),
             Hero(
-                id = 70,
                 name = "npc_dota_hero_nyx_assassin",
                 localizedName = "Nyx Assassin",
                 primaryAttr = "int",
@@ -1065,7 +1001,6 @@ class HeroesViewModel : ViewModel() {
                 position = 4
             ),
             Hero(
-                id = 71,
                 name = "npc_dota_hero_ogre_magi",
                 localizedName = "Ogre Magi",
                 primaryAttr = "int",
@@ -1076,7 +1011,6 @@ class HeroesViewModel : ViewModel() {
                 position = 4
             ),
             Hero(
-                id = 115,
                 name = "npc_dota_hero_vengefulspirit",
                 localizedName = "Vengeful Spirit",
                 primaryAttr = "int",
@@ -1087,7 +1021,6 @@ class HeroesViewModel : ViewModel() {
                 position = 4
             ),
             Hero(
-                id = 116,
                 name = "npc_dota_hero_venomancer",
                 localizedName = "Venomancer",
                 primaryAttr = "int",
@@ -1098,7 +1031,6 @@ class HeroesViewModel : ViewModel() {
                 position = 4
             ),
             Hero(
-                id = 78,
                 name = "npc_dota_hero_phoenix",
                 localizedName = "Phoenix",
                 primaryAttr = "int",
@@ -1109,7 +1041,6 @@ class HeroesViewModel : ViewModel() {
                 position = 4
             ),
             Hero(
-                id = 72,
                 name = "npc_dota_hero_omniknight",
                 localizedName = "Omniknight",
                 primaryAttr = "int",
@@ -1120,7 +1051,6 @@ class HeroesViewModel : ViewModel() {
                 position = 4
             ),
             Hero(
-                id = 102,
                 name = "npc_dota_hero_techies",
                 localizedName = "Techies",
                 primaryAttr = "int",
@@ -1131,7 +1061,6 @@ class HeroesViewModel : ViewModel() {
                 position = 4
             ),
                     Hero(
-                        id = 37,
                         name = "npc_dota_hero_hoodwink",
                         localizedName = "Hoodwink",
                         primaryAttr = "int",
@@ -1142,7 +1071,6 @@ class HeroesViewModel : ViewModel() {
                         position = 4
                     ),
                     Hero(
-                        id = 30,
                         name = "npc_dota_hero_earth_spirit",
                         localizedName = "Earth Spirit",
                         primaryAttr = "int",
@@ -1153,7 +1081,6 @@ class HeroesViewModel : ViewModel() {
                         position = 4
                     ),
                     Hero(
-                        id = 33,
                         name = "npc_dota_hero_enchantress",
                         localizedName = "Enchantress",
                         primaryAttr = "int",
@@ -1164,7 +1091,6 @@ class HeroesViewModel : ViewModel() {
                         position = 4
                     ),
                     Hero(
-                        id = 34,
                         name = "npc_dota_hero_enigma",
                         localizedName = "Enigma",
                         primaryAttr = "int",
@@ -1175,7 +1101,6 @@ class HeroesViewModel : ViewModel() {
                         position = 4
                     ),
                     Hero(
-                        id = 31,
                         name = "npc_dota_hero_elder_titan",
                         localizedName = "Elder Titan",
                         primaryAttr = "int",
@@ -1186,7 +1111,6 @@ class HeroesViewModel : ViewModel() {
                         position = 4
                     ),
                     Hero(
-                        id = 21,
                         name = "npc_dota_hero_dark_seer",
                         localizedName = "Dark Seer",
                         primaryAttr = "int",
@@ -1197,7 +1121,6 @@ class HeroesViewModel : ViewModel() {
                         position = 4
                     ),
                     Hero(
-                        id = 7,
                         name = "npc_dota_hero_bane",
                         localizedName = "Bane",
                         primaryAttr = "int",
@@ -1208,7 +1131,6 @@ class HeroesViewModel : ViewModel() {
                         position = 4
                     ),
                     Hero(
-                        id = 11,
                         name = "npc_dota_hero_bounty_hunter",
                         localizedName = "Bounty Hunter",
                         primaryAttr = "int",
@@ -1219,7 +1141,6 @@ class HeroesViewModel : ViewModel() {
                         position = 4
                     ),
             Hero(
-                id = 67,
                 name = "npc_dota_hero_furion",
                 localizedName = "Nature's Prophet",
                 primaryAttr = "int",
@@ -1230,7 +1151,6 @@ class HeroesViewModel : ViewModel() {
                 position = 4
             ),
             Hero(
-                id = 99,
                 name = "npc_dota_hero_spirit_breaker",
                 localizedName = "Spirit Breaker",
                 primaryAttr = "int",
@@ -1241,7 +1161,6 @@ class HeroesViewModel : ViewModel() {
                 position = 4
             ),
             Hero(
-                id = 120,
                 name = "npc_dota_hero_warlock",
                 localizedName = "Warlock",
                 primaryAttr = "int",
@@ -1252,7 +1171,6 @@ class HeroesViewModel : ViewModel() {
                 position = 4
             ),
                     Hero(
-                        id = 17,
                         name = "npc_dota_hero_chen",
                         localizedName = "Chen",
                         primaryAttr = "int",
@@ -1263,7 +1181,6 @@ class HeroesViewModel : ViewModel() {
                         position = 4
                     ),
             Hero(
-                id = 62,
                 name = "npc_dota_hero_mirana",
                 localizedName = "Mirana",
                 primaryAttr = "int",
@@ -1274,7 +1191,6 @@ class HeroesViewModel : ViewModel() {
                 position = 4
             ),
             Hero(
-                id = 86,
                 name = "npc_dota_hero_ringmaster",
                 localizedName = "Ringmaster",
                 primaryAttr = "int",
@@ -1285,7 +1201,6 @@ class HeroesViewModel : ViewModel() {
                 position = 4
             ),
             Hero(
-                id = 43,
                 name = "npc_dota_hero_keeper_of_the_light",
                 localizedName = "Keeper of the Light",
                 primaryAttr = "int",
@@ -1296,7 +1211,6 @@ class HeroesViewModel : ViewModel() {
                 position = 4
             ),
             Hero(
-                id = 92,
                 name = "npc_dota_hero_silencer",
                 localizedName = "Silencer",
                 primaryAttr = "int",
@@ -1308,7 +1222,6 @@ class HeroesViewModel : ViewModel() {
             ),
                     // POSICIÓN 5 - HARD SUPPORT
                     Hero(
-                        id = 20,
                         name = "npc_dota_hero_crystal_maiden",
                         localizedName = "Crystal Maiden",
                         primaryAttr = "int",
@@ -1319,7 +1232,6 @@ class HeroesViewModel : ViewModel() {
                         position = 5
                     ),
                     Hero(
-                        id = 35,
                         name = "npc_dota_hero_grimstroke",
                         localizedName = "Grimstroke",
                         primaryAttr = "int",
@@ -1330,7 +1242,6 @@ class HeroesViewModel : ViewModel() {
                         position = 5
                     ),
             Hero(
-                id = 91,
                 name = "npc_dota_hero_shadow_shaman",
                 localizedName = "Shadow Shaman",
                 primaryAttr = "int",
@@ -1341,7 +1252,6 @@ class HeroesViewModel : ViewModel() {
                 position = 5
             ),
             Hero(
-                id = 109,
                 name = "npc_dota_hero_treant",
                 localizedName = "Treant Protector",
                 primaryAttr = "int",
@@ -1352,7 +1262,6 @@ class HeroesViewModel : ViewModel() {
                 position = 5
             ),
             Hero(
-                id = 73,
                 name = "npc_dota_hero_oracle",
                 localizedName = "Oracle",
                 primaryAttr = "int",
@@ -1363,7 +1272,6 @@ class HeroesViewModel : ViewModel() {
                 position = 5
             ),
             Hero(
-                id = 93,
                 name = "npc_dota_hero_skywrath_mage",
                 localizedName = "Skywrath Mage",
                 primaryAttr = "int",
@@ -1374,7 +1282,6 @@ class HeroesViewModel : ViewModel() {
                 position = 5
             ),
                     Hero(
-                        id = 26,
                         name = "npc_dota_hero_disruptor",
                         localizedName = "Disruptor",
                         primaryAttr = "int",
@@ -1385,7 +1292,6 @@ class HeroesViewModel : ViewModel() {
                         position = 5
                     ),
             Hero(
-                id = 51,
                 name = "npc_dota_hero_lion",
                 localizedName = "Lion",
                 primaryAttr = "int",
@@ -1396,7 +1302,6 @@ class HeroesViewModel : ViewModel() {
                 position = 5
             ),
             Hero(
-                id = 40,
                 name = "npc_dota_hero_wisp",
                 localizedName = "Io",
                 primaryAttr = "int",
@@ -1407,7 +1312,6 @@ class HeroesViewModel : ViewModel() {
                 position = 5
             ),
             Hero(
-                id = 48,
                 name = "npc_dota_hero_lich",
                 localizedName = "Lich",
                 primaryAttr = "int",
@@ -1418,7 +1322,6 @@ class HeroesViewModel : ViewModel() {
                 position = 5
             ),
             Hero(
-                id = 41,
                 name = "npc_dota_hero_jakiro",
                 localizedName = "Jakiro",
                 primaryAttr = "int",
@@ -1429,7 +1332,6 @@ class HeroesViewModel : ViewModel() {
                 position = 5
             ),
                     Hero(
-                        id = 24,
                         name = "npc_dota_hero_dazzle",
                         localizedName = "Dazzle",
                         primaryAttr = "int",
@@ -1440,7 +1342,6 @@ class HeroesViewModel : ViewModel() {
                         position = 5
                     ),
             Hero(
-                id = 124,
                 name = "npc_dota_hero_witch_doctor",
                 localizedName = "Witch Doctor",
                 primaryAttr = "int",
@@ -1451,7 +1352,6 @@ class HeroesViewModel : ViewModel() {
                 position = 5
             ),
                     Hero(
-                        id = 22,
                         name = "npc_dota_hero_dark_willow",
                         localizedName = "Dark Willow",
                         primaryAttr = "int",
@@ -1462,7 +1362,6 @@ class HeroesViewModel : ViewModel() {
                         position = 5
                     ),
             Hero(
-                id = 123,
                 name = "npc_dota_hero_winter_wyvern",
                 localizedName = "Winter Wyvern",
                 primaryAttr = "int",
@@ -1473,7 +1372,6 @@ class HeroesViewModel : ViewModel() {
                 position = 5
             ),
                     Hero(
-                        id = 3,
                         name = "npc_dota_hero_ancient_apparition",
                         localizedName = "Ancient Apparition",
                         primaryAttr = "int",
@@ -1484,10 +1382,17 @@ class HeroesViewModel : ViewModel() {
                         position = 5
                     )
         )
+
+        // 👇 generas ids empezando en 1 y ordenado por nombre
+        return heroesBase
+            .sortedBy { it.localizedName }
+            .mapIndexed { index, hero ->
+                hero.copy(id = index + 1)
+            }
     }
 }
 sealed class HeroesUiState {
     object Loading : HeroesUiState()
-    data class Success(val heroes: List<Hero>) : HeroesUiState()
+    data class Success(val heroes: List<HeroesViewModel.HeroWithScore>) : HeroesUiState()
     data class Error(val message: String) : HeroesUiState()
 }
