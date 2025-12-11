@@ -501,9 +501,9 @@ fun HeroItem(
     }
 
     val scoreText = when {
-        score > 0 -> "+${score.toInt()}"
-        score < 0 -> "${score.toInt()}"
-        else -> "0"
+        score > 0 -> "+${"%.2f".format(score)}"
+        score < 0 -> "%.2f".format(score)
+        else -> "0.00"
     }
 
     Card(
