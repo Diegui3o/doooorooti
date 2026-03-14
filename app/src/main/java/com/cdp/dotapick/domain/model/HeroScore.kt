@@ -21,7 +21,6 @@ object SimpleScoringSystem {
         return 0.0
     }
 
-    // 👉 SOLO suma lo que tú definiste en heroRelationshipsByName
     fun calculateSimpleScore(selectedTeam: List<Hero>, candidateHero: Hero): Double {
         if (selectedTeam.isEmpty()) return 0.0
 
@@ -31,7 +30,8 @@ object SimpleScoringSystem {
             val matchupScore = getScore(selectedHero, candidateHero)
             totalScore += matchupScore
         }
-        return totalScore.coerceIn(-10.0, 10.0)
+
+        return totalScore
     }
 
     // Si usas breakdown, también sin bonus extra:

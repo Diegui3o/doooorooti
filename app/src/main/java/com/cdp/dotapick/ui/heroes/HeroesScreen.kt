@@ -1,11 +1,19 @@
 package com.cdp.dotapick.ui.heroes
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
@@ -15,8 +23,14 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -28,6 +42,7 @@ import com.cdp.dotapick.ui.theme.DotaBlue
 import com.cdp.dotapick.ui.theme.DotaGold
 import com.cdp.dotapick.ui.theme.DotaGreen
 import com.cdp.dotapick.ui.theme.DotaRed
+import kotlinx.coroutines.delay
 
 @Composable
 fun HeroesScreen(
@@ -476,28 +491,38 @@ fun HeroItem(
     val hero = heroWithScore.hero
     val score = heroWithScore.score
 
-    val positionColor = when (hero.position) {
-        1 -> DotaRed.copy(alpha = 0.8f)
-        2 -> DotaBlue.copy(alpha = 0.8f)
-        3 -> DotaGreen.copy(alpha = 0.8f)
-        4 -> Color(0xFF9C27B0).copy(alpha = 0.8f)
-        5 -> Color.White.copy(alpha = 0.8f)
-        else -> Color.Gray.copy(alpha = 0.6f)
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.98f else 1f,
+        animationSpec = tween(durationMillis = 150)
+    )
+
+    val roleName = when (hero.position) {
+        1 -> "Carry"
+        2 -> "Mid"
+        3 -> "Offlane"
+        4 -> "Support"
+        5 -> "Hard Support"
+        else -> "Unknown"
     }
 
-    val backgroundColor = when (hero.position) {
-        1 -> DotaRed.copy(alpha = 0.15f)
-        2 -> DotaBlue.copy(alpha = 0.15f)
-        3 -> DotaGreen.copy(alpha = 0.15f)
-        4 -> Color(0xFF9C27B0).copy(alpha = 0.15f)
-        5 -> Color.White.copy(alpha = 0.1f)
-        else -> Color.Gray.copy(alpha = 0.05f)
+    val roleColor = when (hero.position) {
+        1 -> DotaRed
+        2 -> DotaBlue
+        3 -> DotaGreen
+        4 -> Color(0xFFBA68C8)
+        5 -> Color(0xFFFFF176)
+        else -> Color.Gray
     }
+
+    // 🎨 Neon glow (más intenso)
+    val neonColor = roleColor.copy(alpha = 0.9f)
 
     val scoreColor = when {
         score > 0 -> DotaGreen
         score < 0 -> DotaRed
-        else -> Color(0xFFFFC107)
+        else -> DotaGold
     }
 
     val scoreText = when {
@@ -509,81 +534,84 @@ fun HeroItem(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .height(70.dp),
-        colors = CardDefaults.cardColors(containerColor = backgroundColor),
+            .height(110.dp)
+            .scale(scale),
         shape = RoundedCornerShape(12.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-        onClick = onHeroClick
+        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+        onClick = onHeroClick,
+        interactionSource = interactionSource
     ) {
         Row(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 12.dp),
+                .padding(horizontal = 14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // 👇 Imagen + ID
+
+            // 🌟 HERO AVATAR — circular + neon halo
             Box(
                 modifier = Modifier
-                    .size(45.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(positionColor.copy(alpha = 0.3f))
+                    .size(90.dp),
+                contentAlignment = Alignment.Center
             ) {
-                AsyncImage(
-                    model = hero.icon,
-                    contentDescription = "Icono de ${hero.localizedName}",
+                // Halo externo
+                Box(
                     modifier = Modifier
-                        .size(45.dp)
-                        .clip(RoundedCornerShape(8.dp))
+                        .size(90.dp)
+                        .shadow(
+                            elevation = 22.dp,
+                            shape = CircleShape,
+                            ambientColor = neonColor,
+                            spotColor = neonColor
+                        )
+                        .background(neonColor.copy(alpha = 0.15f), CircleShape)
                 )
 
-                // ID sobre la imagen
-                Text(
-                    text = "${hero.id}",
-                    color = Color.White,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
+                // Imagen circular
+                AsyncImage(
+                    model = hero.img,
+                    contentDescription = hero.localizedName,
                     modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .background(
-                            Color.Black.copy(alpha = 0.7f),
-                            RoundedCornerShape(bottomEnd = 6.dp)
+                        .size(72.dp)
+                        .clip(CircleShape)
+                        .border(
+                            width = 2.dp,
+                            color = neonColor,
+                            shape = CircleShape
                         )
-                        .padding(horizontal = 4.dp, vertical = 2.dp)
                 )
             }
 
-            Spacer(modifier = Modifier.width(12.dp))
+            Spacer(modifier = Modifier.width(16.dp))
 
-            Column(modifier = Modifier.weight(1f)) {
+            // Nombre
+            Text(
+                text = hero.localizedName,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+                maxLines = 1,
+                modifier = Modifier.weight(1f)
+            )
+
+            // Rol + Score
+            Column(
+                horizontalAlignment = Alignment.End
+            ) {
                 Text(
-                    text = hero.localizedName,
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1
-                )
-
-                Spacer(modifier = Modifier.height(2.dp))
-
-                Text(
-                    text = hero.getPositionName(),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = positionColor,
+                    text = roleName,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = neonColor,
                     fontWeight = FontWeight.Bold
                 )
-            }
 
-            Column(horizontalAlignment = Alignment.End) {
+                Spacer(modifier = Modifier.height(6.dp))
+
                 Text(
                     text = scoreText,
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.labelMedium,
                     color = scoreColor,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = "pts",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    fontWeight = FontWeight.SemiBold
                 )
             }
         }
